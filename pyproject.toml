@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ujyu"
+version = "0.1.0"
+description = "Studio Miris VN 엔진(AXRe/VNEG) 한글 패치 도구"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["fonttools>=4.0", "pillow>=9.0", "numpy>=1.23", "pefile>=2023.2.7"]
+
+[project.optional-dependencies]
+movie = ["scipy>=1.9", "opencv-python>=4.6"]   # dmj 무비 인코딩/디코딩
+reverse = ["capstone>=5.0"]                    # exe 디스어셈블 분석
+dev = ["pytest>=7"]                             # 테스트
+all = ["scipy>=1.9", "opencv-python>=4.6", "capstone>=5.0"]
+
+[project.scripts]
+ujyu = "ujyu.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["ujyu*"]

@@ -1,0 +1,20 @@
+# ujyu 전체 툴킷 (핵심 + 선택 의존성 모두).
+#   pip install -r requirements.txt
+# 핵심만 원하면:  pip install -e .
+# 특정 기능만:    pip install -e ".[movie]"  /  ".[reverse]"  /  ".[all]"
+
+# --- 핵심 (텍스트/폰트/아카이브/exe 빌드) ---
+fonttools>=4.0
+pillow>=9.0
+numpy>=1.23          # AXRe xor 벡터연산, dmj
+pefile>=2023.2.7     # patch_ui / exe 빌드
+
+# --- 무비(dmj) 인코딩·디코딩 ---
+scipy>=1.9
+opencv-python>=4.6
+
+# --- exe 디스어셈블 분석 ---
+capstone>=5.0
+
+# --- 테스트 ---
+pytest>=7
