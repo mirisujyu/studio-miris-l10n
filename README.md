@@ -31,6 +31,7 @@ ujyu inspect                   # 다음에 할 일
 | [docs/COMMANDS.md](docs/COMMANDS.md) | 명령 전체 목록 (설정 관리기 / 전체 프로세스 / 포맷 처리기 / 유틸리티) |
 | [docs/formats/](docs/formats/) | 포맷·엔진 구조 스펙 — 구조의 **단일 출처** |
 | [docs/CLI_STYLE.md](docs/CLI_STYLE.md) | 명령을 추가·수정할 때의 인자·도움말 규칙 |
+| [docs/UPSCALE.ja.md](docs/UPSCALE.ja.md) | **日本語** — 画面を大きくする手順（번역과 무관하게 해상도만 올리려는 일본어 사용자용） |
 
 포맷 스펙: [AXR](docs/formats/AXR.md)(아카이브) · [VNEG](docs/formats/VNEG.md)(스크립트) ·
 [MOVIE](docs/formats/MOVIE.md)(DMJ0) · [COMMON_CSV](docs/formats/COMMON_CSV.md)(설정) ·
