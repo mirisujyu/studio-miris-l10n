@@ -209,6 +209,33 @@ def _legacy_to_template(kr, cmds):
             kr = kr.replace(c, "{%d}" % i, 1)
     return kr
 
+# 여는 낫표 — 앞에 좁은 공백을 넣을 대상
+OPEN_QUOTES = ("「", "『")
+
+def space_before_quote(text):
+    """문중의 여는 낫표(`「` `『`) 앞에 전각공백을 한 칸 넣는다.
+
+    가변폭에서는 여는 낫표의 획이 칸 오른쪽에 정렬돼 있다(build_font 의 OPEN).
+    문두에서는 그 왼쪽 여백이 들여쓰기 노릇을 하지만, 문장 **중간**에 오면 앞 글자에
+    바짝 붙어 읽기 나쁘다. 그래서 앞에 한 칸 띄운다 — 전각공백은 폰트가 1/4 폭으로
+    렌더하므로 좁은 사이가 된다.
+
+    넣지 않는 경우:
+      · 문두 (이미 들여쓰기 노릇을 한다)
+      · 앞이 또 다른 여는 낫표 (`「『` 처럼 붙여 쓰는 표기)
+      · 앞이 이미 공백
+    """
+    if not text:
+        return text
+    out = []
+    for i, ch in enumerate(text):
+        if ch in OPEN_QUOTES and i > 0:
+            prev = text[i - 1]
+            if prev not in OPEN_QUOTES and prev != FW_SPACE and prev != " ":
+                out.append(FW_SPACE)
+        out.append(ch)
+    return "".join(out)
+
 def normalize(text):
     """**표시 텍스트 전용** — ASCII 를 전부 전각으로 바꾼다.
 
@@ -218,6 +245,9 @@ def normalize(text):
     if not text:
         return text
     text = sub_jp_punct(text)          # 。、 → ．，(+뒤 문자에 따른 공백)
+    if getattr(C, "FONT_WIDTH_MODE", "proportional") != "fullwidth":
+        text = space_before_quote(text)   # 문중의 「『 앞에 좁은 공백
+
     text = text.translate(_DASH_NORM)  # em대시·장음 등 → 전각 대시 ―(CP949 안전)
     text = text.replace("...", "…")
     out = []
