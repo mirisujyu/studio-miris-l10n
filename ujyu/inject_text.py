@@ -236,6 +236,26 @@ def space_before_quote(text):
         out.append(ch)
     return "".join(out)
 
+def space_after_ellipsis(text):
+    """`…` 바로 뒤에 한글이 오면 전각공백을 한 칸 넣는다.
+
+    `…가` 처럼 붙으면 말줄임표가 다음 글자에 먹혀 읽기 나쁘다. `。`/`、` 뒤에
+    공백을 넣는 것(`sub_jp_punct`)과 같은 이유다 — 전각공백은 폰트가 1/4 폭으로
+    렌더하므로 좁은 사이가 된다.
+
+    `……` 처럼 말줄임표가 이어지는 경우는 **마지막 것 뒤에만** 들어간다(중간의
+    `…` 는 뒤가 한글이 아니므로 걸리지 않는다).
+    """
+    if not text:
+        return text
+    out = []
+    n = len(text)
+    for i, ch in enumerate(text):
+        out.append(ch)
+        if ch == "…" and i + 1 < n and 0xAC00 <= ord(text[i + 1]) <= 0xD7A3:
+            out.append(FW_SPACE)
+    return "".join(out)
+
 def normalize(text):
     """**표시 텍스트 전용** — ASCII 를 전부 전각으로 바꾼다.
 
@@ -246,7 +266,8 @@ def normalize(text):
         return text
     text = sub_jp_punct(text)          # 。、 → ．，(+뒤 문자에 따른 공백)
     if getattr(C, "FONT_WIDTH_MODE", "proportional") != "fullwidth":
-        text = space_before_quote(text)   # 문중의 「『 앞에 좁은 공백
+        text = space_before_quote(text)     # 문중의 「『 앞에 좁은 공백
+        text = space_after_ellipsis(text)   # … 뒤에 한글이 붙으면 좁은 공백
 
     text = text.translate(_DASH_NORM)  # em대시·장음 등 → 전각 대시 ―(CP949 안전)
     text = text.replace("...", "…")
