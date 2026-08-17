@@ -295,9 +295,22 @@ def normalize(text):
 class EncodeError(Exception):
     pass
 
-def encode_body(text):
-    """**표시 텍스트** -> CP949 바이트열. 전 바이트가 0x80 이상이어야 한다."""
+NEWLINE_CMD = chr(92) + "n"       # 줄바꿈 커맨드 — 그 앞에는 공백을 붙이지 않는다
+
+
+def encode_body(text, next_cmd=None):
+    """**표시 텍스트** -> CP949 바이트열. 전 바이트가 0x80 이상이어야 한다.
+
+    `next_cmd` 는 이 런 **바로 뒤에 오는 원문 커맨드**다. 마침표·쉼표 뒤의 공백은
+    `sub_jp_punct` 이 넣는데, 그 함수는 조각 안만 보므로 문장부호가 조각 끝에 오면
+    못 넣는다. 그런데 뒤에 커맨드가 붙어 있다는 것은 **거기서 줄이 끝나지 않고
+    이어진다**는 뜻이다(`ぴっ、*v` → `통、` + `*v` + 다음 조각 `통、`). 안 넣으면
+    화면에 `통，통，` 처럼 붙어 나온다. 줄바꿈 커맨드 앞은 예외 — 어차피 줄이 끊긴다.
+    """
     text = normalize(text)
+    if (next_cmd and next_cmd != NEWLINE_CMD
+            and text.endswith(tuple(JP_PUNCT.values()))):
+        text += FW_SPACE
     out = bytearray()
     for ch in text:
         try:
@@ -353,10 +366,10 @@ def encode_piece(kr, jp):
         kr = _legacy_to_template(kr, cmds)
     out = bytearray(); pos = 0
     for m in TOKEN.finditer(kr):
-        out += encode_body(kr[pos:m.start()])
         i = int(m.group(1))
         if i >= len(cmds):
             raise EncodeError("원문에 없는 커맨드 토큰 {%d} (원문 커맨드 %d개)" % (i, len(cmds)))
+        out += encode_body(kr[pos:m.start()], next_cmd=cmds[i])
         out += cmds[i].encode("latin1")
         pos = m.end()
     out += encode_body(kr[pos:])
