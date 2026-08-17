@@ -264,6 +264,15 @@ def normalize(text):
     """
     if not text:
         return text
+    # 검수 마커(config.REVIEW_MARK)는 번역자가 "이 줄은 다시 보라"고 남긴 표시다.
+    # strings.json 에는 남겨 두고(`ujyu filter review` 의 검토 열이 이걸 본다) **화면에
+    # 나가기 직전에만** 뗀다. 안 떼면 그대로 글자로 찍힌다 — 실제로 147조각이
+    # 아카이브까지 들어가 있었다.
+    mark = getattr(C, "REVIEW_MARK", None)
+    if mark:
+        text = text.replace(mark, "")
+        if not text:
+            return text
     text = sub_jp_punct(text)          # 。、 → ．，(+뒤 문자에 따른 공백)
     if getattr(C, "FONT_WIDTH_MODE", "proportional") != "fullwidth":
         text = space_before_quote(text)     # 문중의 「『 앞에 좁은 공백
