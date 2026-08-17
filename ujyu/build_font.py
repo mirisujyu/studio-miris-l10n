@@ -356,7 +356,7 @@ def merge_jp(f, spec):
     from fontTools.pens.cu2quPen import Cu2QuPen
     from ujyu import jpmap
 
-    freq, _res = jpmap.scan()
+    freq, reserved = jpmap.scan()
     src = getattr(spec, "JP_SOURCE", None)
     if not freq:
         print("  JP 병합: 미번역 조각이 없다 — 건너뜀")
@@ -408,16 +408,11 @@ def merge_jp(f, spec):
     kcm = f.getBestCmap()
     ucmaps = [t for t in f["cmap"].tables if t.isUnicode()]
     override = _override_set(getattr(spec, "JP_OVERRIDE", None))
-    added = skipped = missing = 0
-    for ch in sorted(freq, key=lambda c: -freq[c]):
-        target = pua.get(ch, ord(ch)) if not jpmap.cp949_ok(ch) else ord(ch)
-        if target in kcm and target not in override:   # 이미 한글 폰트에 있는 글자
-            skipped += 1
-            continue
+    def plant(ch, target):
+        """JP 소스의 `ch` 를 `target` 코드포인트에 심는다. 성공하면 True."""
         gn_src = jcm.get(ord(ch))
         if not gn_src:
-            missing += 1
-            continue
+            return False
         # 이미 있는 코드포인트를 덮어쓰는 경우엔 **그 글리프를 제자리에서 교체**한다.
         # 새 글리프를 만들어 cmap 만 돌리면, 저장할 때 post 가 이름을 코드포인트에서
         # 다시 만들어 내면서 옛 글리프와 이름이 겹쳐 옛것이 살아남는다.
@@ -434,11 +429,40 @@ def merge_jp(f, spec):
         hmtx[name] = (adv, getattr(g, "xMin", 0))
         for t in ucmaps:
             t.cmap[target] = name
-        added += 1
+        kcm[target] = name           # 아래 2차 통과가 중복으로 심지 않게
+        return True
+
+    added = skipped = missing = extra = 0
+    for ch in sorted(freq, key=lambda c: -freq[c]):
+        target = pua.get(ch, ord(ch)) if not jpmap.cp949_ok(ch) else ord(ch)
+        if target in kcm and target not in override:   # 이미 한글 폰트에 있는 글자
+            skipped += 1
+            continue
+        if plant(ch, target):
+            added += 1
+        else:
+            missing += 1
+
+    # **번역문이 쓰는 글자도 심는다.** jpmap 은 미번역 조각만 세므로, 번역문에 일부러
+    # 남겨 둔 일본어(고유명사·닉네임 `TAK改` 등)는 표에 안 잡힌다. 한글 폰트가 한자를
+    # 같이 갖고 있으면(Noto Sans KR) 우연히 나오지만, 한글 전용 폰트(IBM Plex Sans KR)
+    # 에서는 그 글자만 빈칸이 된다 — 실측으로 스태프롤의 `改` 가 그랬다.
+    # reserved = jpmap.scan() 이 모은 "자기 자리를 그대로 써야 하는" 유니코드로,
+    # 번역문이 쓰는 글자가 전부 들어 있다.
+    for cp in sorted(reserved):
+        if cp <= 0x7F or cp in kcm:
+            continue
+        ch = chr(cp)
+        if not jpmap.cp949_ok(ch):   # CP949 로 못 실어 나르는 글자는 자리가 없다
+            continue
+        if plant(ch, cp):
+            added += 1; extra += 1
+
     f.setGlyphOrder(glyf.glyphOrder)   # 폰트 쪽 순서를 glyf 가 갱신한 것에 맞춘다
     f["maxp"].numGlyphs = len(glyf.glyphOrder)
-    print("           심음 %d자 (이미 있음 %d, JP 폰트에 없음 %d)"
-          % (added, skipped, missing))
+    print("           심음 %d자 (이미 있음 %d, JP 폰트에 없음 %d%s)"
+          % (added, skipped, missing,
+             ", 번역문 쪽 %d" % extra if extra else ""))
 
 
 def build(spec, out, mode="proportional", shift_em=None):
