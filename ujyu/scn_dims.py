@@ -45,6 +45,11 @@ RULES = {
     ('textwindow', 0x41): (0, 1),                     # 텍스트 그리기 x, y
     ('textwindow', 0x18): (0, 1),                     # 선택지 버튼 치수
     ('textwindow', 0x07): (0, 1),                     # 글꼴 크기, 줄 높이(생략 가능)
+    # 애니메이션 — **마지막 인자는 시간(ms)이라 건드리면 안 된다.**
+    # 좌표만 ×N 하면 이동 거리와 창이 같이 커져 보이는 속도는 그대로다.
+    ('layer', 0x05):      (0, 1),                     # (x, y, ms) 로 이동
+    ('textwindow', 0x20): (0,),                       # 스크롤 위치 즉시 설정
+    ('textwindow', 0x40): (0,),                       # (y, ms) 로 스크롤
 }
 # 객체 심볼 정의에서 ×N 할 앞쪽 int 인자 개수
 DEF_RULES = {'layer': 4, 'button': 4, 'textwindow': 8, 'textwindow2': 8,
@@ -334,7 +339,11 @@ def plan(d):
             continue
         if len(args) != 1 or args[0][0] != 'i':
             skipped.append((a, "배열%d" % len(args), sorted(scal[a]), [])); continue
-        if args[0][1] <= 0:      # 0/음수는 좌표가 아니라 센티널(-1=자동 등)
+        # 0 은 ×N 해도 0 이고, -1 은 "자동" 센티널이라 건드리면 뜻이 바뀐다.
+        # 그 밖의 음수는 진짜 좌표다 — 스태프롤은 화면 위(-360)에서 스크롤을
+        # 시작하고, 가림막은 화면 위(-480)에서 내려온다. 실측(神無ノ鳥) 결과
+        # 좌표 자리의 0 이하 값은 0·-1·이 셋뿐이다.
+        if args[0][1] == 0 or args[0][1] == -1:
             continue
         if a in other:
             if DO_REPOINT and len(syms) + len(repoint) < 0x1000:
@@ -352,7 +361,9 @@ def plan(d):
         if not k:
             continue
         for t, v, off in sargs.get(i, [])[:k]:
-            if t == 'i' and v > 0:
+            # 음수도 좌표다 — 스태프롤의 위쪽 가림막은 화면 밖(y=-60)에서 시작해
+            # 내려온다. 안 키우면 2× 에서 절반만 숨어 시작 프레임에 띠가 보인다.
+            if t == 'i' and (v > 0 or (v < 0 and v != -1)):
                 entries.append((off, 4, v))
 
     if DO_TABLES:                           # 목록 화면의 행 사각형 표
@@ -525,7 +536,9 @@ def apply(d, N):
     syms, fs = vneg.parse_syms(d)
     b = bytearray(d)
     for off, w, base in entries:
-        b[off:off + w] = (base * N).to_bytes(w, "big")
+        # 스크롤 시작 위치처럼 음수인 좌표가 있다(스태프롤 -360 = 화면 위).
+        # int32 는 부호 있는 값이라 signed 로 써야 한다.
+        b[off:off + w] = (base * N).to_bytes(w, "big", signed=True)
     if repoint:
         # parse_syms 의 len은 다원소 정의를 펼친 **런타임 슬롯 수**라 새 참조의
         # 시작 인덱스로 맞다. 반면 헤더 [6:8]은 정의 수이므로 서로 섞지 않는다.
