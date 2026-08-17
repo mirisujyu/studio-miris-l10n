@@ -189,6 +189,91 @@ def apply_proportional(f, spec):
     print("  가변폭 조정: SPACE/OPEN/CLOSE/FIXED 적용")
 
 
+def fit_vertical(f, spec):
+    """셀 밖으로 나가는 글리프를 세로로만 밀어 넣는다.
+
+    GGO 경로는 글리프를 `gmptGlyphOrigin.y`(=yMax) 기준으로 **1 em 짜리 셀**에 얹기
+    때문에, 아웃라인이 `0..upm` 밖으로 나가면 그 부분이 그대로 잘린다. 전역 시프트
+    (`TARGET_BOTTOM_EM`)는 **한글 표본만** 보고 정하므로 그보다 더 내려앉는 글자는
+    거기서 못 걸러진다 — 폰트마다 디센더 깊이가 달라 한쪽에 맞춘 값이 다른 쪽에서
+    깨진다.
+
+        Noto Sans KR   ( ) , / \\ { } [ ]  → yMin −62..−88  (40px 기준 아래 4px 잘림)
+        IBM Plex Sans KR                   → yMin ≥ 0       (안 잘림)
+
+    특히 `）`(마음속 대사 닫는 괄호)는 본문에 6천 번 넘게 나와 눈에 잘 띈다.
+
+    올려서 위가 넘치면 **세로로만** 눌러 맞춘다. 가로를 건드리면 advance 와
+    `hmtx` lsb(=xMin) 를 다시 잡아야 하는데, 자간이 곧 advance 라(TEXT_RENDER §3)
+    글자 폭이 흔들린다. 세로 압축은 괄호 기준 3% 남짓이라 눈에 띄지 않는다.
+    """
+    from fontTools.pens.recordingPen import DecomposingRecordingPen
+    from fontTools.pens.ttGlyphPen import TTGlyphPen
+
+    lo_em, hi_em = getattr(spec, "FIT_WINDOW_EM", (0.01, 0.99))
+    upm = f["head"].unitsPerEm
+    floor, ceil_ = round(lo_em * upm), round(hi_em * upm)
+    glyf = f["glyf"]
+    stat = {"moved": 0, "squashed": 0, "worst": (1.0, None), "decomposed": 0}
+
+    def fit(gn):
+        """창 밖이면 맞추고 True. 세로만 건드리므로 advance/lsb 는 그대로다."""
+        gl = glyf[gn]
+        if getattr(gl, "numberOfContours", 0) == 0:      # 빈 글리프
+            return False
+        gl.recalcBounds(glyf)
+        lo, hi = gl.yMin, gl.yMax
+        if lo >= floor and hi <= ceil_:
+            return False
+        if gl.numberOfContours < 0:
+            # 합성 글리프는 좌표를 직접 못 만진다 — 윤곽으로 풀어서 고친다.
+            # (부품이 이미 고쳐졌어도 offset 때문에 창을 넘을 수 있다)
+            gs = f.getGlyphSet()
+            rec = DecomposingRecordingPen(gs)
+            gs[gn].draw(rec)
+            pen = TTGlyphPen(None)
+            rec.replay(pen)
+            glyf[gn] = gl = pen.glyph()
+            gl.recalcBounds(glyf)
+            lo, hi = gl.yMin, gl.yMax
+            stat["decomposed"] += 1
+            if gl.numberOfContours <= 0 or (lo >= floor and hi <= ceil_):
+                return True
+        s = 1.0
+        if hi - lo > ceil_ - floor:                      # 창보다 크면 눌러서 맞춘다
+            s = (ceil_ - floor) / float(hi - lo)
+            stat["squashed"] += 1
+            if s < stat["worst"][0]:
+                stat["worst"] = (s, gn)
+        new_hi = lo + (hi - lo) * s
+        dy = floor - lo if lo < floor else (ceil_ - new_hi if new_hi > ceil_ else 0)
+        c = gl.coordinates
+        for i in range(len(c)):
+            x, y = c[i]
+            c[i] = (x, int(round((y - lo) * s + lo + dy)))
+        gl.recalcBounds(glyf)
+        return True
+
+    order = f.getGlyphOrder()
+    # 윤곽 글리프 먼저 — 부품이 제자리로 가면 합성 글리프가 저절로 들어오는 경우가 많다.
+    for gn in order:
+        if getattr(glyf[gn], "numberOfContours", 0) > 0 and fit(gn):
+            stat["moved"] += 1
+    for gn in order:
+        if getattr(glyf[gn], "numberOfContours", 0) < 0 and fit(gn):
+            stat["moved"] += 1
+    moved, squashed, worst = stat["moved"], stat["squashed"], stat["worst"]
+    if moved:
+        note = ""
+        if squashed:
+            note += " / 눌러 맞춤 %d자 (최대 %s ×%.3f)" % (squashed, worst[1], worst[0])
+        if stat["decomposed"]:
+            note += " / 합성 푼 것 %d자" % stat["decomposed"]
+        print("  세로 맞춤: %d자를 %d..%d 안으로%s" % (moved, floor, ceil_, note))
+    else:
+        print("  세로 맞춤: 셀(%d..%d) 밖으로 나간 글리프 없음" % (floor, ceil_))
+
+
 def _box(f, cps, cm=None):
     """주어진 코드포인트들의 (최저 y, 최고 y, advance 중앙값). 글리프 없으면 건너뛴다."""
     import statistics
@@ -384,6 +469,10 @@ def build(spec, out, mode="proportional", shift_em=None):
 
     # 1-b) 일본어 글리프 병합 — 한글이 이미 시프트된 뒤라 그 좌표계에 맞춰 심는다
     merge_jp(f, spec)
+
+    # 1-c) 셀 밖으로 나간 글리프 되돌리기 — 전역 시프트는 한글 표본만 보고 정하므로
+    #      그보다 깊은 디센더(괄호·쉼표 등)와 병합된 일본어를 여기서 함께 걸러 낸다.
+    fit_vertical(f, spec)
 
     # 2) 전각 ASCII 재매핑 + 별칭 (모드 무관 — 글자가 화면에 나오게)
     remap_fullwidth_ascii(f)
